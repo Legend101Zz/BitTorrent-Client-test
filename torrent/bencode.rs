@@ -112,6 +112,39 @@ impl BencodeParser {
 
         Ok(BencodeValue::List(values))
     }
+
+    // dictionary parser
+    fn parse_dictionary(&mut self) -> Result<BencodeValue, String> {
+        // 1. Skip the 'd' prefix
+        self.position += 1;
+
+        // 2. Create a HashMap to store our key-value pairs
+        let mut dict = HashMap::new();
+
+        // 3. Keep parsing until we find the end marker 'e'
+        while self.position < self.data.len() && self.data[self.position] != b'e' {
+            // Parse key (must be a string)
+            let key = match self.parse_value()? {
+                BencodeValue::String(k) => k,
+                _ => return Err("Dictionary key must be a string".to_string()),
+            };
+
+            // Parse value (can be any type)
+            let value = self.parse_value()?;
+
+            // Insert into HashMap
+            dict.insert(key, value);
+        }
+
+        // 4. Check if we found the end marker
+        if self.position >= self.data.len() {
+            return Err("Unterminated dictionary".to_string());
+        }
+
+        // 5. Skip the 'e' suffix
+        self.position += 1;
+        Ok(BencodeValue::Dictionary(dict))
+    }
 }
 
 #[cfg(test)]
@@ -181,6 +214,32 @@ mod tests {
                 }
             }
             _ => panic!("Expected list"),
+        }
+    }
+
+    #[test]
+    fn test_parse_dictionary() {
+        // Test case: Simple dictionary
+        let input = b"d3:foo3:bar5:helloi42ee".to_vec();
+        let mut parser = BencodeParser::new(input);
+
+        match parser.parse_value() {
+            Ok(BencodeValue::Dictionary(dict)) => {
+                assert_eq!(dict.len(), 2);
+
+                // Check "foo" -> "bar" mapping
+                match dict.get(b"foo".as_slice()) {
+                    Some(BencodeValue::String(v)) => assert_eq!(v, b"bar"),
+                    _ => panic!("Expected string value for 'foo'"),
+                }
+
+                // Check "hello" -> 42 mapping
+                match dict.get(b"hello".as_slice()) {
+                    Some(BencodeValue::Integer(v)) => assert_eq!(*v, 42),
+                    _ => panic!("Expected integer value for 'hello'"),
+                }
+            }
+            _ => panic!("Expected dictionary"),
         }
     }
 }
